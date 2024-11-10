@@ -5,22 +5,89 @@ import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Text "mo:base/Text";
 import Cycles "mo:base/ExperimentalCycles";
+import Debug "mo:base/Debug";
+import Principal "mo:base/Principal";
+import Map "mo:map/Map";
+import { phash; nhash } "mo:map/Map";
+import Nat "mo:base/Nat";
+import Vector "mo:vector";
 
 actor {
+    stable var autoIndex = 0; //stable is stored in stable storage, when smart contract is changed, this var does not change, good for unique ID
+    let userIdMap = Map.new<Principal, Nat>();
+    let userProfileMap = Map.new<Nat, Text>();
+    let userResultsMap = Map.new<Nat, Vector.Vector<Text>>();
+
+    // example of UserProfile type (for reference only. Not used in this example.)
+    // type UserProfile = { name : Text; socials_linkedin : Text; socials_twitter : Text; socials_github : Text};
+
     public query ({ caller }) func getUserProfile() : async Result.Result<{ id : Nat; name : Text }, Text> {
-        return #ok({ id = 123; name = "test" });
+        let foundID = switch (Map.get(userIdMap, phash, caller)) {
+            case (?found) found;
+            case (_) { return #err("User not found") };
+        };
+
+        switch (Map.get(userProfileMap, nhash, foundID)) {
+            case (?name) return #ok({ id = foundID -1; name = name }); // -1 matches set method from tutorial
+            case (null) return #err("Profile not found");
+        };
     };
 
     public shared ({ caller }) func setUserProfile(name : Text) : async Result.Result<{ id : Nat; name : Text }, Text> {
-        return #ok({ id = 123; name = "test" });
+        // check if user already exists
+        switch (Map.get(userIdMap, phash, caller)) {
+            case (?_x) {};
+            case (_) { 
+                // set user id
+                Map.set(userIdMap, phash, caller, autoIndex); 
+            };
+        };
+
+        // set profile name
+        let foundID = switch (Map.get(userIdMap, phash, caller)) {
+            case (?found) found;
+            case (_) { return #err("User not found") };
+        };
+        
+        Map.set(userProfileMap, nhash, autoIndex, name);
+
+        // increment for next user
+        autoIndex += 1;
+
+        Debug.print("Principal: " # debug_show caller);
+        return #ok({ id = foundID -1; name = name });
     };
 
     public shared ({ caller }) func addUserResult(result : Text) : async Result.Result<{ id : Nat; results : [Text] }, Text> {
-        return #ok({ id = 123; results = ["fake result"] });
+        // check if user exists
+        let foundID = switch (Map.get(userIdMap, phash, caller)) {
+            case (?found) found;
+            case (_) { return #err("User not found") };
+        };
+
+        let results = switch (Map.get(userResultsMap, nhash, foundID)) {
+            case (?found) found;
+            case (_) Vector.new<Text>();
+        };
+
+        Vector.add(results, result);
+        Map.set(userResultsMap, nhash, foundID, results);
+
+        return #ok({ id = foundID; results = Vector.toArray(results) });
     };
 
     public query ({ caller }) func getUserResults() : async Result.Result<{ id : Nat; results : [Text] }, Text> {
-        return #ok({ id = 123; results = ["fake result"] });
+        let foundID = switch (Map.get(userIdMap, phash, caller)) {
+            case (?found) found;
+            case (_) { return #err("User not found") };
+        };
+
+        let results = switch (Map.get(userResultsMap, nhash, foundID)) {
+            case (?found) found;
+            case (_) Vector.new<Text>();
+        };
+
+        return #ok({ id = foundID -1; results = Vector.toArray(results) });
     };
 
     public func outcall_ai_model_for_sentiment_analysis(paragraph : Text) : async Result.Result<{ paragraph : Text; result : Text }, Text> {
