@@ -49,7 +49,7 @@ actor {
             case (_) { return #err("User not found") };
         };
         
-        Map.set(userProfileMap, nhash, autoIndex, name);
+        Map.set(userProfileMap, nhash, foundID, name);
 
         // increment for next user
         autoIndex += 1;
